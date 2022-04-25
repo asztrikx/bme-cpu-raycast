@@ -96,11 +96,14 @@ class Cylinder: public Intersectable {
 	std::vector<Plane> planes;
 
   public:
-	Cylinder(vec3 start, float height, float r, vec3 dir, Material* material): Intersectable(material), start(start), height(height), r(r), dir(normalize(dir)) {
+	Cylinder(vec3 start, float height, float r, vec3 dir, Material* material)
+	: Intersectable(material), start(start), height(height), r(r), dir(normalize(dir)) {
+		/*
 		normal.x = 1;
 		normal.y = 0;
 		normal.z = -dir.x / dir.z;
-		normal = normalize(normal);
+		normal = normalize(normal);*/
+		normal = vec3(1,0,0);
 
 		planes.push_back(Plane(dir, start, material));
 		planes.push_back(Plane(dir, start + dir * height, material));
@@ -118,13 +121,13 @@ class Cylinder: public Intersectable {
 
 		// TODO use multiplication for simpler form
 		float a = powf(normal.x * ray.dir.x, 2) + powf(normal.y * ray.dir.y, 2);
-		float b = 2*normal.x*ray.dir.x*(ray.start.x - start.x) + 2*normal.y*ray.dir.y*(ray.start.y - start.y);
+		float b = 2*powf(normal.x,2)*ray.dir.x*(ray.start.x - start.x) + 2*powf(normal.y,2)*ray.dir.y*(ray.start.y - start.y);
 		float c = powf(normal.x*(ray.start.x-start.x), 2) + powf(normal.y*(ray.start.y-start.y), 2) - powf(r,2);
 
 		float sol = quardraticSmaller(a,b,c);
 		if (isnan(sol)) return hit;
 
-		vec3 position = ray.start + ray.dir * hit.t;
+		vec3 position = ray.start + ray.dir * sol;
 		float distanceFromStart = dot(dir, position - start);
 		if (distanceFromStart > height || distanceFromStart < 0) return hit;
 
@@ -166,6 +169,7 @@ class Camera {
 		set(eye, lookat, up, fov);
 	}
 };
+
 struct Light {
 	vec3 direction;
 	vec3 Le;
@@ -203,7 +207,7 @@ class Scene {
 
 		objects.push_back(new Plane(vec3(0,0,1), vec3(0,0,0), materialPlane));
 		objects.push_back(new Sphere(vec3(0,0,0), 0.1f, materialLamp));
-		objects.push_back(new Cylinder(vec3(0,0,0), 10, 1, vec3(0,0,1), materialLamp));
+		//objects.push_back(new Cylinder(vec3(0,0,1), 10, 1, vec3(0,0,1), materialLamp));
 	}
 	
 	void render(std::vector<vec4>& image) {
