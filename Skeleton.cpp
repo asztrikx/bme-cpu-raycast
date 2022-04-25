@@ -1,5 +1,7 @@
 #include "framework.h"
 
+#define dbg if(false)
+
 float floatEqual(float subject, float number) {
 	float eps = 0.001;
 	return subject > number - eps && subject < number + eps;
@@ -27,6 +29,7 @@ vec3 perpendicular(vec3 v) {
 	return vec3(result[0], result[1], result[2]);
 }
 
+// second is smaller
 std::pair<float,float> quardratic(float a, float b, float c) {
 	float discr = b*b-4.0f*a*c;
 	if (discr < 0) return std::make_pair(nanf(""),nanf(""));
@@ -43,6 +46,13 @@ float rayQuadratic(float a, float b, float c) {
 	if (isnan(t1)) return t1;
 	if (t1 <= 0) return nanf("");
 	return (t2>0) ? t2 : t1;
+}
+
+float rnd() { return (float)rand() / RAND_MAX; }
+float const eps = 0.0001f;
+
+void print(std::string text, vec3 v) {
+	printf("%s: %ef %ef %ef\n", text.c_str(), v.x, v.y, v.z);
 }
 
 struct Material {
@@ -108,7 +118,7 @@ struct Plane: public Intersectable {
 		Hit hit;
 		float divisor = dot(ray.dir, normal);
 		if (floatEqual(divisor, 0.0f)) return hit;
-		float t = - dot(ray.start - point, normal) / divisor;
+		float t = dot(point - ray.start, normal) / divisor;
 		if (t < 0) return hit;
 		hit.position = ray.start + t*ray.dir;
 		hit.normal = normal;
@@ -132,19 +142,23 @@ class Cylinder: public Intersectable {
 	Cylinder(vec3 start, float height, float r, vec3 dir, Material* material)
 	: Intersectable(material), start(start), height(height), dir(normalize(dir)), r(r) {
 		normal = perpendicular(dir);
-		planes.push_back(Plane(dir, start, material));
 		planes.push_back(Plane(dir, start + dir * height, material));
+		planes.push_back(Plane(dir, start, material));
 	}
 
 	Hit intersect(Ray const& ray) {
 		Hit hit;
-
 		Hit hitPlane;
+
 		for (Plane plane: planes) {
+			//dbg print("ray.start", ray.start);
+			//dbg print("ray.dir", ray.dir);
 			Hit hitPlaneCandidate = plane.intersect(ray);
 			// did hit
 			if (hitPlaneCandidate.t > 0 && length(hitPlaneCandidate.position - plane.point) <= r) {
+				dbg printf("%ef %ef\n", hitPlaneCandidate.position.z, hitPlaneCandidate.t);
 				if (hitPlane.t < 0 || hitPlaneCandidate.t < hitPlane.t) {
+					if(hitPlane.t >= 0 && hitPlaneCandidate.t < hitPlane.t) dbg printf("xD");
 					hitPlane = hitPlaneCandidate;
 				}
 			}
@@ -156,22 +170,27 @@ class Cylinder: public Intersectable {
 		float a = dot(A,A);
 		float b = 2*dot(A,B);
 		float c = dot(B,B)-r*r;
+		std::pair<float,float> sols = quardratic(a,b,c);
+		if (isnan(sols.first)) return hitPlane;
 
-		float t = rayQuadratic(a,b,c);
-		if (isnan(t)) return hitPlane;
-		if (hitPlane.t < t) return hitPlane;
-
+		float t = sols.second;
 		vec3 position = ray.start + ray.dir * t;
-		float distanceFromStart = dot(dir, position - start);
-		if (distanceFromStart > height || distanceFromStart < 0) return hit;
+		float distFromStart = dot(dir, position - start);
+		if (t < 0 || distFromStart > height || distFromStart < 0) {
+			t = sols.first;
+			position = ray.start + ray.dir * t;
+			distFromStart = dot(dir, position - start);
+			if (t < 0 || distFromStart > height || distFromStart < 0) return hitPlane;
+		}
+		if (hitPlane.t > 0 && hitPlane.t < t) return hitPlane;
 
-		vec3 center = start + distanceFromStart*dir;
+		vec3 center = start + distFromStart*dir;
 
 		hit.t = t;
 		hit.material = material;
 		hit.normal = (position - center) / r;
 		hit.position = position;
-		return hit;
+		return hit; //min of hit hitplane
 	}
 };
 
@@ -188,13 +207,15 @@ class Paraboloid: public Intersectable {
 		vec3 T = start+height*dir+radius*perpendicular(dir);
 
 		float a = dot(dir, dir);
-		float b = 2*dot(dir,start-T);
-		float c = dot(start-T,start-T) - dot(eNormal,T-eP);
+		float b = -2*dot(dir,T-start);
+		float c = dot(T-start,T-start) - powf(dot(eNormal,T-eP),2);
 
 		float x = quardratic(a,b,c).first;
 		if (x <= 0) printf("fak\n");
 		f = start+x*dir;
 	}
+
+	float implicit(vec3 r) { return length(f-r) - fabs(dot(eNormal, r-eP)); }
 
 	Hit intersect(Ray const& ray) {
 		Hit hit;
@@ -202,28 +223,34 @@ class Paraboloid: public Intersectable {
 		float a = dot(ray.dir,ray.dir);
 		float b = 2*dot(ray.dir, ray.start-f);
 		float c = dot(ray.start-f,ray.start-f);
-		a -= pow(dot(eNormal,ray.dir),2);
+		a -= powf(dot(eNormal,ray.dir),2);
 		b -= 2*dot(eNormal,ray.dir)*dot(eNormal,ray.start-eP);
-		c -= pow(dot(eNormal,ray.start-eP),2);
+		c -= powf(dot(eNormal,ray.start-eP),2);
 
 		std::pair<float,float> sols = quardratic(a,b,c);
-		float t = sols.first;
-		if(isnan(t)) return hit;
+		if(isnan(sols.first)) return hit;
 
+		float t = sols.second;
 		vec3 position = ray.start+t*ray.dir;
-		float height = dot(position-start, dir);
-		if (height > this->height) {
-			t = sols.second;
+		float distFromStart = dot(position-start, dir);
+		if (distFromStart > height) {
+			t = sols.first;
 			position = ray.start+t*ray.dir;
-			height = dot(position-start, dir);
-			if (height > this->height) return hit;
+			distFromStart = dot(position-start, dir);
+			if (distFromStart > height) return hit;
 		}
+
+		float eps = 0.001;
+		float derX = implicit(position + vec3(eps,0,0));
+		float derY = implicit(position + vec3(0,eps,0));
+		float derZ = implicit(position + vec3(0,0,eps));
 
 		hit.t = t;
 		hit.material = material;
 		hit.position = position;
-		hit.normal = vec3(1,0,0);
-		return hit;
+		hit.normal = normalize(vec3(derX,derY,derZ));
+		if (dot(-ray.dir, hit.normal) < 0) hit.normal = -hit.normal;
+ 		return hit;
 	}
 };
 
@@ -262,13 +289,6 @@ struct Light {
 	Light(vec3 direction, vec3 Le): direction(normalize(direction)), Le(Le) {}
 };
 
-float rnd() { return (float)rand() / RAND_MAX; }
-float const eps = 0.0001f;
-
-void print(std::string text, vec3 v) {
-	printf("%s: %ef %ef %ef\n", text.c_str(), v.x, v.y, v.z);
-}
-
 class Scene {
 	std::vector<Intersectable*> objects;
 	std::vector<Light*> lights;
@@ -292,9 +312,9 @@ class Scene {
 		Material* materialLamp = new Material(kd2, ks, 50);
 
 		objects.push_back(new Plane(vec3(0,0,1), vec3(0,0,0), materialPlane));
-		objects.push_back(new Sphere(vec3(0,0,0), 0.1f, materialLamp));
-		objects.push_back(new Cylinder(vec3(0,0,1), 2, 1, vec3(0,0,1), materialLamp));
-		//objects.push_back(new Paraboloid(vec3(0,0,0), vec3(0,0,1), 2, 1, materialLamp));
+		objects.push_back(new Sphere(vec3(0,0,0), 0.1f, materialPlane));
+		//objects.push_back(new Cylinder(vec3(0,0,1), 2, 1, vec3(0,0,1), materialLamp));
+		objects.push_back(new Paraboloid(vec3(0,0,0), vec3(0,0,1), 2, 1, materialLamp));
 	}
 	
 	void render(std::vector<vec4>& image) {
