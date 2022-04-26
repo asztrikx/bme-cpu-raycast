@@ -235,11 +235,11 @@ class Paraboloid: public Intersectable {
 		float t = sols.second;
 		vec3 position = ray.start+t*ray.dir;
 		float distFromStart = dot(position-start, dir);
-		if (t < 0 || distFromStart > height || distFromStart < 0) {
+		if (t < 0 || distFromStart > height ) {
 			t = sols.first;
 			position = ray.start+t*ray.dir;
 			distFromStart = dot(position-start, dir);
-			if (t < 0 || distFromStart > height || distFromStart < 0) return hit;
+			if (t < 0 || distFromStart > height ) return hit;
 		}
 
 		float eps = 0.001;
@@ -285,7 +285,7 @@ class Scene {
 	std::vector<Intersectable*> objects;
 	std::vector<Light*> lights;
 	Camera camera;
-	vec3 La;
+	vec3 La = vec3(0.4f, 0.4f, 0.4f);;
 
 	vec3 viewUp = vec3(0,0,1);
 	vec3 lookat = vec3(0,0,0);
@@ -298,34 +298,62 @@ class Scene {
 	float sphereR = 1.0f/8;
 	float cylinderR = sphereR / 3;
 	float paraH = 0.5, paraF = 0.1;
+	float cylinderH0 = 2;
+	float cylinderH1 = 1;
+	vec3 dir0 = normalize(vec3(1,1,2));
+	vec3 dir1 = normalize(vec3(-0.5,-1,2.8));
+	vec3 paraDir = vec3(-2,-2,1);
+	vec3 rot0 = normalize(vec3(1,1,1));
+	vec3 rot1 = normalize(vec3(2,1,2));
+	vec3 rot2 = normalize(vec3(2,2,1));
+	vec3 joint1;
+	vec3 joint2;
 	vec3 joint0 = vec3(0,0,bigCylinderH);
-	vec3 joint1 = vec3(1,1,2);
-	vec3 joint2 = vec3(0.5,1,3);
-	float cylinderH0 = length(joint1-joint0);
-	float cylinderH1 = length(joint2-joint1);
-	vec3 cylinderDir0 = normalize(joint1-joint0);
-	vec3 cylinderDir1 = normalize(joint2-joint1);
-	vec3 paraDir = vec3(2,2,1);
   public:
-	void build() {
-		camera.set(eye,lookat,viewUp,fov);
-
-		La = vec3(0.4f, 0.4f, 0.4f);
-		vec3 lightDirection(1,1,1), Le(2,2,2);
-		lights.push_back(new Light(lightDirection, Le));
+	void recalc() {
+		vec3 joint1 = joint0+cylinderH0*dir0;
+		vec3 joint2 = joint1+cylinderH1*dir1;
 
 		vec3 kd1(0.3f, 0.2f, 0.1f), kd2(0.1f, 0.2f, 0.3f), ks(2,2,2);
 		Material* materialPlane = new Material(kd1, ks, 50);
 		Material* materialLamp = new Material(kd2, ks, 50);
 
+		objects.clear();
 		objects.push_back(new Plane(vec3(0,0,1), vec3(0,0,0), materialPlane));
 		objects.push_back(new Cylinder(vec3(0,0,0), bigCylinderH, bigCylinderR, vec3(0,0,1), materialLamp));
 		objects.push_back(new Sphere(joint0, sphereR, materialPlane));
 		objects.push_back(new Sphere(joint1, sphereR, materialPlane));
 		objects.push_back(new Sphere(joint2, sphereR, materialPlane));
-		objects.push_back(new Cylinder(joint0, cylinderH0, cylinderR, cylinderDir0, materialLamp));
-		objects.push_back(new Cylinder(joint1, cylinderH1, cylinderR, cylinderDir1, materialLamp));
+		objects.push_back(new Cylinder(joint0, cylinderH0, cylinderR, dir0, materialLamp));
+		objects.push_back(new Cylinder(joint1, cylinderH1, cylinderR, dir1, materialLamp));
 		objects.push_back(new Paraboloid(joint2, paraDir, paraH, paraF, materialLamp));
+	}
+
+	void Animate(float dt) {
+		/*camera.Animate(dt);*/
+		//eye.z += 1; camera.set(eye,lookat,viewUp,fov);
+
+		vec4 t;
+
+		t = vec4(dir0.x,dir0.y,dir0.z,1) * RotationMatrix(3*dt, rot0);
+		dir0 = vec3(t.x, t.y, t.z);
+
+		t = vec4(dir1.x,dir1.y,dir1.z,1) * RotationMatrix(-2*dt, rot1);
+		dir1 = vec3(t.x, t.y, t.z);
+		
+		t = vec4(paraDir.x,paraDir.y,paraDir.z,1) * RotationMatrix(-3*dt, dir1);
+		paraDir = vec3(t.x, t.y, t.z);
+
+		recalc();
+	}
+
+	void build() {
+		camera.set(eye,lookat,viewUp,fov);
+
+		vec3 lightDirection(1,1,1), Le(2,2,2);
+		lights.push_back(new Light(lightDirection, Le));
+
+		recalc();
 	}
 	
 	void render(std::vector<vec4>& image) {
@@ -370,7 +398,6 @@ class Scene {
 		return outRadiance;
 	}
 
-	void Animate(float dt) {/*camera.Animate(dt);*/  eye.z += 1; camera.set(eye,lookat,viewUp,fov); }
 };
 
 GPUProgram gpuProgram; // vertex and fragment shaders
@@ -405,30 +432,42 @@ const char *fragmentSource = R"(
 )";
 
 class FullScreenTexturedQuad {
-	unsigned int vao;	// vertex array object id and texture id
-	Texture texture;
+	unsigned int vao, textureId = 0;
 public:
-	FullScreenTexturedQuad(int windowWidth, int windowHeight, std::vector<vec4>& image)
-		: texture(windowWidth, windowHeight, image) 
-	{
-		glGenVertexArrays(1, &vao);	// create 1 vertex array object
-		glBindVertexArray(vao);		// make it active
+	FullScreenTexturedQuad(int windowWidth, int windowHeight)	{
+		glGenVertexArrays(1, &vao);
+		glBindVertexArray(vao);
 
-		unsigned int vbo;		// vertex buffer objects
-		glGenBuffers(1, &vbo);	// Generate 1 vertex buffer objects
+		unsigned int vbo;
+		glGenBuffers(1, &vbo);
 
-		// vertex coordinates: vbo0 -> Attrib Array 0 -> vertexPosition of the vertex shader
-		glBindBuffer(GL_ARRAY_BUFFER, vbo); // make it active, it is an array
-		float vertexCoords[] = { -1, -1,  1, -1,  1, 1,  -1, 1 };	// two triangles forming a quad
-		glBufferData(GL_ARRAY_BUFFER, sizeof(vertexCoords), vertexCoords, GL_STATIC_DRAW);	   // copy to that part of the memory which is not modified 
+		glBindBuffer(GL_ARRAY_BUFFER, vbo);
+		float vertexCoords[] = { -1, -1,  1, -1,  1, 1,  -1, 1 };
+		glBufferData(GL_ARRAY_BUFFER, sizeof(vertexCoords), vertexCoords, GL_STATIC_DRAW);
 		glEnableVertexAttribArray(0);
-		glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 0, NULL);     // stride and offset: it is tightly packed
+		glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 0, NULL);
+
+		glGenTextures(1, &textureId);
+		glBindTexture(GL_TEXTURE_2D, textureId);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+	}
+
+	void LoadTexture(std::vector<vec4>& image) {
+		glBindTexture(GL_TEXTURE_2D, textureId);
+		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, windowWidth, windowHeight, 0, GL_RGBA, GL_FLOAT, &image[0]);
 	}
 
 	void Draw() {
-		glBindVertexArray(vao);	// make the vao and its vbos active playing the role of the data source
-		gpuProgram.setUniform(texture, "textureUnit");
-		glDrawArrays(GL_TRIANGLE_FAN, 0, 4);	// draw two triangles forming a quad
+		glBindVertexArray(vao);
+		int location = glGetUniformLocation(gpuProgram.getId(), "textureUnit");
+		const unsigned int textureUnit = 0;
+		if(location>=0) {
+			glUniform1i(location, textureUnit);
+			glActiveTexture(GL_TEXTURE0+textureUnit);
+			glBindTexture(GL_TEXTURE_2D, textureId);
+		}
+		glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
 	}
 };
 
@@ -438,22 +477,15 @@ FullScreenTexturedQuad * fullScreenTexturedQuad;
 void onInitialization() {
 	glViewport(0, 0, windowWidth, windowHeight);
 	scene.build();
-
-	std::vector<vec4> image(windowWidth * windowHeight);
-	long timeStart = glutGet(GLUT_ELAPSED_TIME);
-	scene.render(image);
-	long timeEnd = glutGet(GLUT_ELAPSED_TIME);
-	printf("Rendering time: %d milliseconds\n", (timeEnd - timeStart));
-
-	// copy image to GPU as a texture
-	fullScreenTexturedQuad = new FullScreenTexturedQuad(windowWidth, windowHeight, image);
-
-	// create program for the GPU
+	fullScreenTexturedQuad = new FullScreenTexturedQuad(windowWidth, windowHeight);
 	gpuProgram.create(vertexSource, fragmentSource, "fragmentColor");
 }
 
 // Window has become invalid: Redraw
 void onDisplay() {
+	std::vector<vec4> image(windowWidth*windowHeight);
+	scene.render(image);
+	fullScreenTexturedQuad->LoadTexture(image);
 	fullScreenTexturedQuad->Draw();
 	glutSwapBuffers();									// exchange the two buffers
 }
@@ -477,4 +509,6 @@ void onMouseMotion(int pX, int pY) {
 
 // Idle event indicating that some time elapsed: do animation here
 void onIdle() {
+	scene.Animate(0.1*2);
+	glutPostRedisplay();
 }
