@@ -1,4 +1,5 @@
 #include "framework.h"
+#include <assert.h>
 
 #define dbg if(false)
 
@@ -49,7 +50,6 @@ float rayQuadratic(float a, float b, float c) {
 }
 
 float rnd() { return (float)rand() / RAND_MAX; }
-float const eps = 0.0001f;
 
 void print(std::string text, vec3 v) {
 	printf("%s: %ef %ef %ef\n", text.c_str(), v.x, v.y, v.z);
@@ -57,37 +57,38 @@ void print(std::string text, vec3 v) {
 
 struct Material {
 	vec3 ka, kd, ks;
-	float shininess;
-	Material(vec3 kd, vec3 ks, float shininess): ka(kd*M_PI), kd(kd), ks(ks), shininess(shininess) {}
+	float  shininess;
+	Material(vec3 _kd, vec3 _ks, float _shininess) : ka(_kd * M_PI), kd(_kd), ks(_ks) { shininess = _shininess; }
 };
 
 struct Hit {
 	float t;
 	vec3 position, normal;
-	Material* material;
+	Material * material;
 	Hit() { t = -1; }
 };
 
 struct Ray {
 	vec3 start, dir;
-	Ray(vec3 start, vec3 dir): start(start), dir(normalize(dir)) {}
+	Ray(vec3 _start, vec3 _dir) { start = _start; dir = normalize(_dir); }
 };
 
 class Intersectable {
   protected:
-	Material* material;
-
-	Intersectable(Material* material): material(material) {}
+	Material * material;
   public:
-	virtual Hit intersect(Ray const& ray) = 0;
+	virtual Hit intersect(const Ray& ray) = 0;
 };
 
 class Sphere: public Intersectable {
 	vec3 center;
 	float radius;
   public:
-    Sphere(vec3 center, float radius, Material* material)
-	: Intersectable(material), center(center), radius(radius) {}
+    Sphere(const vec3& _center, float _radius, Material* _material) {
+		center = _center;
+		radius = _radius;
+		material = _material;
+	}
 
 	Hit intersect(Ray const& ray) {
 		Hit hit;
@@ -96,10 +97,13 @@ class Sphere: public Intersectable {
 		float b = dot(ray.dir, dist) * 2.0f;
 		float c = dot(dist, dist) - radius * radius;
 
-		float sol = rayQuadratic(a,b,c);
-		if (isnan(sol)) return hit;
+		auto sols = quardratic(a,b,c);
+		if (isnan(sols.first)) return hit;
+		float t1 = sols.first;
+		float t2 = sols.second;
 
-		hit.t = sol;
+		if (t1 <= 0) return hit;
+		hit.t = (t2 > 0) ? t2 : t1;
 		hit.position = ray.start + ray.dir * hit.t;
 		hit.normal = (hit.position - center) / radius;
 		hit.material = material;
@@ -111,8 +115,11 @@ struct Plane: public Intersectable {
 	vec3 normal;
 	vec3 point;
 	
-	Plane(vec3 normal, vec3 point, Material* material)
-	: Intersectable(material), normal(normalize(normal)), point(point) {}
+	Plane(vec3 _normal, vec3 _point, Material* _material) {
+		normal = normalize(_normal);
+		point = _point;
+		material = _material;
+	}
 
 	Hit intersect(Ray const& ray) {
 		Hit hit;
@@ -122,7 +129,6 @@ struct Plane: public Intersectable {
 		if (t < 0) return hit;
 		hit.position = ray.start + t*ray.dir;
 		hit.normal = normal;
-		if (dot(-ray.dir, hit.normal) < 0) { hit.normal = -hit.normal; }
 		hit.material = material;
 		hit.t = t;
 		return hit;
@@ -134,14 +140,19 @@ class Cylinder: public Intersectable {
 	float height;
 	vec3 dir;
 	float r;
-	vec3 normal;
+	vec3 dir90;
 
 	std::vector<Plane> planes;
 
   public:
-	Cylinder(vec3 start, float height, float r, vec3 dir, Material* material)
-	: Intersectable(material), start(start), height(height), dir(normalize(dir)), r(r) {
-		normal = perpendicular(dir);
+	Cylinder(vec3 _start, float _height, float _r, vec3 _dir, Material* _material) {
+		start = _start;
+		height = _height;
+		r = _r;
+		dir = normalize(_dir);
+		material = _material;
+
+		dir90 = perpendicular(dir);
 		planes.push_back(Plane(dir, start + dir * height, material));
 		planes.push_back(Plane(dir, start, material));
 	}
@@ -151,14 +162,9 @@ class Cylinder: public Intersectable {
 		Hit hitPlane;
 
 		for (Plane plane: planes) {
-			//dbg print("ray.start", ray.start);
-			//dbg print("ray.dir", ray.dir);
 			Hit hitPlaneCandidate = plane.intersect(ray);
-			// did hit
 			if (hitPlaneCandidate.t > 0 && length(hitPlaneCandidate.position - plane.point) <= r) {
-				dbg printf("%ef %ef\n", hitPlaneCandidate.position.z, hitPlaneCandidate.t);
 				if (hitPlane.t < 0 || hitPlaneCandidate.t < hitPlane.t) {
-					if(hitPlane.t >= 0 && hitPlaneCandidate.t < hitPlane.t) dbg printf("xD");
 					hitPlane = hitPlaneCandidate;
 				}
 			}
@@ -166,18 +172,17 @@ class Cylinder: public Intersectable {
 
 		vec3 A = ray.dir - dir*dot(ray.dir,dir);
 		vec3 B = ray.start - start - dir*dot(ray.start,dir)+dir*dot(start,dir);
-
 		float a = dot(A,A);
 		float b = 2*dot(A,B);
 		float c = dot(B,B)-r*r;
 		std::pair<float,float> sols = quardratic(a,b,c);
 		if (isnan(sols.first)) return hitPlane;
 
-		float t = sols.second;
+		float t = a > 0 ? sols.second : sols.first;
 		vec3 position = ray.start + ray.dir * t;
 		float distFromStart = dot(dir, position - start);
 		if (t < 0 || distFromStart > height || distFromStart < 0) {
-			t = sols.first;
+			t = a > 0 ? sols.first : sols.second;
 			position = ray.start + ray.dir * t;
 			distFromStart = dot(dir, position - start);
 			if (t < 0 || distFromStart > height || distFromStart < 0) return hitPlane;
@@ -190,38 +195,24 @@ class Cylinder: public Intersectable {
 		hit.material = material;
 		hit.normal = (position - center) / r;
 		hit.position = position;
-		return hit; //min of hit hitplane
+		return hit;
 	}
 };
 
 class Paraboloid: public Intersectable {
 	vec3 start, dir;
-	float height, radius;
 	vec3 eNormal, eP;
 	vec3 f;
+	float height;
 
  public:
-	Paraboloid(vec3 start, vec3 dir, float height, float radius, Material* material)
-	: Intersectable(material), start(start), dir(normalize(dir)), height(height), radius(radius) {
+	Paraboloid(vec3 start, vec3 dir, float height, float fDist, Material* _material)
+	: start(start), dir(normalize(dir)) {
+		material = _material;
 		eNormal = dir;
-		vec3 T = start+height*dir+radius*perpendicular(dir);
-
-		float a = dot(dir, dir) - pow(dot(eNormal,dir),2);
-		float b = 2*dot(dir,start-T) + 2*dot(eNormal,start-T)*dot(eNormal,dir);
-		float c = dot(start-T,start-T) - powf(dot(eNormal,start-T),2);
-
-		float x;
-		if (floatEqual(a, 0.0f)) {
-			x = -c/b;
-		} else {
-			auto sols = quardratic(a,b,c);
-			printf("sols: %ef %ef\n-", sols.first,sols.second);
-			x = sols.first;
-			if (x <= 0) printf("fak\n");
-		}
-
-		f = start+x*dir;
-		eP = start-x*dir;
+		eP = start-fDist*dir;
+		f = start+fDist*dir;
+		this->height = height;
 	}
 
 	float implicit(vec3 r) { return length(f-r) - fabs(dot(eNormal, r-eP)); }
@@ -229,7 +220,7 @@ class Paraboloid: public Intersectable {
 	Hit intersect(Ray const& ray) {
 		Hit hit;
 
-		float a = dot(ray.dir,ray.dir);
+		float a = dot(ray.dir,ray.dir); // >0
 		float b = 2*dot(ray.dir, ray.start-f);
 		float c = dot(ray.start-f,ray.start-f);
 		a -= powf(dot(eNormal,ray.dir),2);
@@ -258,44 +249,34 @@ class Paraboloid: public Intersectable {
 		hit.material = material;
 		hit.position = position;
 		hit.normal = normalize(vec3(derX,derY,derZ));
-		if (dot(-ray.dir, hit.normal) < 0) hit.normal = -hit.normal;
  		return hit;
 	}
 };
 
 class Camera {
 	vec3 eye, lookat, right, up;
-	float fov;
   public:
-	void set(vec3 eye, vec3 lookat, vec3 viewUp, float fov) {
-		this->eye = eye; this->lookat = lookat; this->fov = fov;
+	void set(vec3 _eye, vec3 _lookat, vec3 vup, float fov) {
+		eye = _eye;
+		lookat = _lookat;
 		vec3 w = eye - lookat;
-		float windowSize = length(w) * tanf(fov / 2);
-		right = normalize(cross(viewUp,w))*windowSize;
-		up = normalize(cross(w, right)) * windowSize;
+		float focus = length(w);
+		right = normalize(cross(vup, w)) * focus * tanf(fov / 2);
+		up = normalize(cross(w, right)) * focus * tanf(fov / 2);
 	}
-
 	Ray getRay(int X, int Y) {
-		float ndcx = 2.0f*(X+0.5f)/windowWidth-1;
-		float ndcy = 2.0f*(Y+0.5f)/windowHeight-1;
-		vec3 dir = (lookat + right*ndcx + up*ndcy) - eye;
-		return Ray(eye, dir);
-	}
-
-	void Animate(float dt) {
-		vec3 d = eye - lookat;
-		vec4 tmp = vec4(d.x, d.y, d.z, 1);
-		vec4 eye4 = tmp * RotationMatrix(dt, vec3(0,0,1));
-		eye = vec3(eye4.x, eye4.y, eye4.z);
-		eye = eye + lookat;
-		set(eye, lookat, up, fov);
+		vec3 dir = lookat + right * (2.0f * (X + 0.5f) / windowWidth - 1) + up * (2.0f * (Y + 0.5f) / windowHeight - 1) - eye;
+		return Ray(eye, normalize(dir));
 	}
 };
 
 struct Light {
 	vec3 direction;
 	vec3 Le;
-	Light(vec3 direction, vec3 Le): direction(normalize(direction)), Le(Le) {}
+	Light(vec3 _direction, vec3 _Le) {
+		direction = normalize(_direction);
+		Le = _Le;
+	}
 };
 
 class Scene {
@@ -306,8 +287,9 @@ class Scene {
 
 	vec3 viewUp = vec3(0,0,1);
 	vec3 lookat = vec3(0,0,0);
-	vec3 eye = vec3(7,0,0.8f);
+	vec3 eye = vec3(3,0,5);
 	float fov = 45.0f / 180 * M_PI;
+	float epsilon = 0.0001;
   public:
 	void build() {
 		camera.set(eye,lookat,viewUp,fov);
@@ -320,17 +302,23 @@ class Scene {
 		Material* materialPlane = new Material(kd1, ks, 50);
 		Material* materialLamp = new Material(kd2, ks, 50);
 
+		float bigCylinderH = 0.1;
+		float bigCylinderR = 0.5;
+		float sphereR = 1.0f/8;
+		float cylinderR = sphereR / 3;
+		float cylinderH = 2.0f;
 		objects.push_back(new Plane(vec3(0,0,1), vec3(0,0,0), materialPlane));
-		objects.push_back(new Sphere(vec3(0,0,0), 0.1f, materialPlane));
-		//objects.push_back(new Cylinder(vec3(0,0,1), 2, 1, vec3(0,0,1), materialLamp));
-		objects.push_back(new Paraboloid(vec3(0,0,0), vec3(0,0,1), 2, 1, materialLamp));
+		//objects.push_back(new Cylinder(vec3(0,0,0), bigCylinderH, bigCylinderR, vec3(0,0,1), materialLamp));
+		//objects.push_back(new Sphere(vec3(0,0,bigCylinderH), sphereR, materialPlane));
+		//objects.push_back(new Cylinder(vec3(0,0,bigCylinderH), cylinderH, cylinderR, vec3(1,1,1), materialLamp));
+		
+		objects.push_back(new Cylinder(vec3(0,0,0.5), 0.5, 1, vec3(0,0,1), materialLamp));
+		//objects.push_back(new Paraboloid(vec3(0,0,2), vec3(1,0,-1), 1, .1f, materialLamp));
 	}
 	
 	void render(std::vector<vec4>& image) {
-		long timeStart = glutGet(GLUT_ELAPSED_TIME);
-
-		// TODO pragma
 		for (int Y = 0; Y < windowHeight; Y++) {
+#pragma omp parallel for
 			for (int X = 0; X < windowWidth; X++) {
 				vec3 color = trace(camera.getRay(X, Y));
 				image[Y * windowWidth + X] = vec4(color.x, color.y, color.z, 1);
@@ -340,34 +328,31 @@ class Scene {
 
 	Hit firstIntersect(Ray ray) {
 		Hit bestHit;
-		for (Intersectable* object: objects) {
-			Hit hit = object->intersect(ray);
-			if(hit.t > 0 && (bestHit.t < 0 || hit.t < bestHit.t)) bestHit = hit;
+		for (Intersectable * object : objects) {
+			Hit hit = object->intersect(ray); //  hit.t < 0 if no intersection
+			if (hit.t > 0 && (bestHit.t < 0 || hit.t < bestHit.t))  bestHit = hit;
 		}
 		if (dot(ray.dir, bestHit.normal) > 0) bestHit.normal = bestHit.normal * (-1);
 		return bestHit;
 	}
 
-	bool shadowIntersect(Ray ray) {
-		for (Intersectable* object: objects) {
-			if(object->intersect(ray).t > 0) return true;
-		}
+	bool shadowIntersect(Ray ray) {	// for directional lights
+		for (Intersectable * object : objects) if (object->intersect(ray).t > 0) return true;
 		return false;
 	}
 
-	vec3 trace(Ray ray) {
+	vec3 trace(Ray ray, int depth = 0) {
 		Hit hit = firstIntersect(ray);
-		if(hit.t < 0) return La;
+		if (hit.t < 0) return La;
 		vec3 outRadiance = hit.material->ka * La;
-		for (Light* light: lights) {
-			Ray shadowRay(hit.position + hit.normal * eps, light->direction);
+		for (Light * light : lights) {
+			Ray shadowRay(hit.position + hit.normal * epsilon, light->direction);
 			float cosTheta = dot(hit.normal, light->direction);
-			if (cosTheta > 0 && !shadowIntersect(shadowRay)) {
+			if (cosTheta > 0 && !shadowIntersect(shadowRay)) {	// shadow computation
 				outRadiance = outRadiance + light->Le * hit.material->kd * cosTheta;
 				vec3 halfway = normalize(-ray.dir + light->direction);
 				float cosDelta = dot(hit.normal, halfway);
-				if (cosDelta <= 0) printf("----%ef\n", cosDelta);
-				if (cosDelta > 0) outRadiance = outRadiance + light->Le*hit.material->ks*powf(cosDelta, hit.material->shininess);
+				if (cosDelta > 0) outRadiance = outRadiance + light->Le * hit.material->ks * powf(cosDelta, hit.material->shininess);
 			}
 		}
 		return outRadiance;
@@ -376,108 +361,108 @@ class Scene {
 	void Animate(float dt) { /*camera.Animate(dt);*/  eye.z += 1; camera.set(eye,lookat,viewUp,fov); }
 };
 
+GPUProgram gpuProgram; // vertex and fragment shaders
 Scene scene;
-GPUProgram gpuProgram;
 
-const char * const vertexSource = R"(
+// vertex shader in GLSL
+const char *vertexSource = R"(
 	#version 330
-	precision highp float;
+    precision highp float;
 
-	layout(location = 0) in vec2 cVP; // c prefix: ndc
-	out vec2 uv;
+	layout(location = 0) in vec2 cVertexPosition;	// Attrib Array 0
+	out vec2 texcoord;
 
 	void main() {
-		uv = (cVP + vec2(1,1)) / 2;
-		gl_Position = vec4(cVP.xy, 0, 1);
+		texcoord = (cVertexPosition + vec2(1, 1))/2;							// -1,1 to 0,1
+		gl_Position = vec4(cVertexPosition.x, cVertexPosition.y, 0, 1); 		// transform to clipping space
 	}
 )";
 
-const char * const fragmentSource = R"(
+// fragment shader in GLSL
+const char *fragmentSource = R"(
 	#version 330
-	precision highp float;
-	
+    precision highp float;
+
 	uniform sampler2D textureUnit;
-	in vec2 uv;
-	out vec4 outColor;
+	in  vec2 texcoord;			// interpolated texture coordinates
+	out vec4 fragmentColor;		// output that goes to the raster memory as told by glBindFragDataLocation
 
 	void main() {
-		outColor = texture(textureUnit, uv);
+		fragmentColor = texture(textureUnit, texcoord); 
 	}
 )";
 
 class FullScreenTexturedQuad {
-	unsigned int vao = 0, textureId = 0;
-  public:
-	FullScreenTexturedQuad() {
-		glGenVertexArrays(1, &vao);
-		glBindVertexArray(vao);
+	unsigned int vao;	// vertex array object id and texture id
+	Texture texture;
+public:
+	FullScreenTexturedQuad(int windowWidth, int windowHeight, std::vector<vec4>& image)
+		: texture(windowWidth, windowHeight, image) 
+	{
+		glGenVertexArrays(1, &vao);	// create 1 vertex array object
+		glBindVertexArray(vao);		// make it active
 
-		unsigned int vbo;
-		glGenBuffers(1, &vbo);
+		unsigned int vbo;		// vertex buffer objects
+		glGenBuffers(1, &vbo);	// Generate 1 vertex buffer objects
 
-		glBindBuffer(GL_ARRAY_BUFFER, vbo);
-		float vpCoos[] = { -1,-1,  1,-1,  1,1,  -1,1};
-		glBufferData(GL_ARRAY_BUFFER, sizeof(vpCoos), vpCoos, GL_STATIC_DRAW);
+		// vertex coordinates: vbo0 -> Attrib Array 0 -> vertexPosition of the vertex shader
+		glBindBuffer(GL_ARRAY_BUFFER, vbo); // make it active, it is an array
+		float vertexCoords[] = { -1, -1,  1, -1,  1, 1,  -1, 1 };	// two triangles forming a quad
+		glBufferData(GL_ARRAY_BUFFER, sizeof(vertexCoords), vertexCoords, GL_STATIC_DRAW);	   // copy to that part of the memory which is not modified 
 		glEnableVertexAttribArray(0);
-		glVertexAttribPointer(0,2,GL_FLOAT,GL_FALSE,0,nullptr);
-		glGenTextures(1, &textureId);
-		glBindTexture(GL_TEXTURE_2D, textureId);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR); //bilineáris szűrés
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-	}
-
-	void LoadTexture(std::vector<vec4>& image) {
-		glBindTexture(GL_TEXTURE_2D, textureId);
-		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, windowWidth, windowHeight, 0, GL_RGBA, GL_FLOAT, &image[0]);
+		glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 0, NULL);     // stride and offset: it is tightly packed
 	}
 
 	void Draw() {
-		glBindVertexArray(vao);
-		int location = glGetUniformLocation(gpuProgram.getId(), "textureUnit");
-		const unsigned int textureUnit = 0;
-		if (location >= 0) {
-			glUniform1i(location, textureUnit);
-			glActiveTexture(GL_TEXTURE0 + textureUnit);
-			glBindTexture(GL_TEXTURE_2D, textureId);
-		}
-
-		glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
+		glBindVertexArray(vao);	// make the vao and its vbos active playing the role of the data source
+		gpuProgram.setUniform(texture, "textureUnit");
+		glDrawArrays(GL_TRIANGLE_FAN, 0, 4);	// draw two triangles forming a quad
 	}
 };
 
-FullScreenTexturedQuad* fullScreenTexturedQuad;
+FullScreenTexturedQuad * fullScreenTexturedQuad;
 
+// Initialization, create an OpenGL context
 void onInitialization() {
 	glViewport(0, 0, windowWidth, windowHeight);
 	scene.build();
-	fullScreenTexturedQuad = new FullScreenTexturedQuad();
-	gpuProgram.create(vertexSource, fragmentSource, "outColor");
-}
 
-void onDisplay() {
-	std::vector<vec4> image(windowWidth*windowHeight);
+	std::vector<vec4> image(windowWidth * windowHeight);
+	long timeStart = glutGet(GLUT_ELAPSED_TIME);
 	scene.render(image);
-	fullScreenTexturedQuad->LoadTexture(image);
+	long timeEnd = glutGet(GLUT_ELAPSED_TIME);
+	printf("Rendering time: %d milliseconds\n", (timeEnd - timeStart));
+
+	// copy image to GPU as a texture
+	fullScreenTexturedQuad = new FullScreenTexturedQuad(windowWidth, windowHeight, image);
+
+	// create program for the GPU
+	gpuProgram.create(vertexSource, fragmentSource, "fragmentColor");
+}
+
+// Window has become invalid: Redraw
+void onDisplay() {
 	fullScreenTexturedQuad->Draw();
-	glutSwapBuffers();
+	glutSwapBuffers();									// exchange the two buffers
 }
 
+// Key of ASCII code pressed
 void onKeyboard(unsigned char key, int pX, int pY) {
-	switch (key) {
-	case 'd': glutPostRedisplay(); break;
-	}
 }
 
+// Key of ASCII code released
 void onKeyboardUp(unsigned char key, int pX, int pY) {
+
 }
 
-void onMouseMotion(int pX, int pY) {
-}
-
+// Mouse click event
 void onMouse(int button, int state, int pX, int pY) {
 }
 
+// Move mouse with key pressed
+void onMouseMotion(int pX, int pY) {
+}
+
+// Idle event indicating that some time elapsed: do animation here
 void onIdle() {
-	scene.Animate(0.1f);
-	glutPostRedisplay();
 }
