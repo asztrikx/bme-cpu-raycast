@@ -202,17 +202,26 @@ class Paraboloid: public Intersectable {
 
  public:
 	Paraboloid(vec3 start, vec3 dir, float height, float radius, Material* material)
-	: Intersectable(material), start(start), dir(dir), height(height), radius(radius) {
+	: Intersectable(material), start(start), dir(normalize(dir)), height(height), radius(radius) {
 		eNormal = dir;
 		vec3 T = start+height*dir+radius*perpendicular(dir);
 
-		float a = dot(dir, dir);
-		float b = -2*dot(dir,T-start);
-		float c = dot(T-start,T-start) - powf(dot(eNormal,T-eP),2);
+		float a = dot(dir, dir) - pow(dot(eNormal,dir),2);
+		float b = 2*dot(dir,start-T) + 2*dot(eNormal,start-T)*dot(eNormal,dir);
+		float c = dot(start-T,start-T) - powf(dot(eNormal,start-T),2);
 
-		float x = quardratic(a,b,c).first;
-		if (x <= 0) printf("fak\n");
+		float x;
+		if (floatEqual(a, 0.0f)) {
+			x = -c/b;
+		} else {
+			auto sols = quardratic(a,b,c);
+			printf("sols: %ef %ef\n-", sols.first,sols.second);
+			x = sols.first;
+			if (x <= 0) printf("fak\n");
+		}
+
 		f = start+x*dir;
+		eP = start-x*dir;
 	}
 
 	float implicit(vec3 r) { return length(f-r) - fabs(dot(eNormal, r-eP)); }
