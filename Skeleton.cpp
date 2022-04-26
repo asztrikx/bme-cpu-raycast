@@ -206,13 +206,15 @@ class Paraboloid: public Intersectable {
 	float height;
 
  public:
-	Paraboloid(vec3 start, vec3 dir, float height, float fDist, Material* _material)
-	: start(start), dir(normalize(dir)) {
+	Paraboloid(vec3 _start, vec3 _dir, float _height, float fDist, Material* _material) {
+		start = _start;
+		dir = normalize(_dir);
+		height = _height;
 		material = _material;
+
 		eNormal = dir;
 		eP = start-fDist*dir;
 		f = start+fDist*dir;
-		this->height = height;
 	}
 
 	float implicit(vec3 r) { return length(f-r) - fabs(dot(eNormal, r-eP)); }
@@ -233,11 +235,11 @@ class Paraboloid: public Intersectable {
 		float t = sols.second;
 		vec3 position = ray.start+t*ray.dir;
 		float distFromStart = dot(position-start, dir);
-		if (distFromStart > height) {
+		if (t < 0 || distFromStart > height || distFromStart < 0) {
 			t = sols.first;
 			position = ray.start+t*ray.dir;
 			distFromStart = dot(position-start, dir);
-			if (distFromStart > height) return hit;
+			if (t < 0 || distFromStart > height || distFromStart < 0) return hit;
 		}
 
 		float eps = 0.001;
@@ -287,9 +289,23 @@ class Scene {
 
 	vec3 viewUp = vec3(0,0,1);
 	vec3 lookat = vec3(0,0,0);
-	vec3 eye = vec3(3,0,5);
+	vec3 eye = vec3(7,0,5);
 	float fov = 45.0f / 180 * M_PI;
 	float epsilon = 0.0001;
+
+	float bigCylinderH = 0.1;
+	float bigCylinderR = 0.5;
+	float sphereR = 1.0f/8;
+	float cylinderR = sphereR / 3;
+	float paraH = 0.5, paraF = 0.1;
+	vec3 joint0 = vec3(0,0,bigCylinderH);
+	vec3 joint1 = vec3(1,1,2);
+	vec3 joint2 = vec3(0.5,1,3);
+	float cylinderH0 = length(joint1-joint0);
+	float cylinderH1 = length(joint2-joint1);
+	vec3 cylinderDir0 = normalize(joint1-joint0);
+	vec3 cylinderDir1 = normalize(joint2-joint1);
+	vec3 paraDir = vec3(2,2,1);
   public:
 	void build() {
 		camera.set(eye,lookat,viewUp,fov);
@@ -302,18 +318,14 @@ class Scene {
 		Material* materialPlane = new Material(kd1, ks, 50);
 		Material* materialLamp = new Material(kd2, ks, 50);
 
-		float bigCylinderH = 0.1;
-		float bigCylinderR = 0.5;
-		float sphereR = 1.0f/8;
-		float cylinderR = sphereR / 3;
-		float cylinderH = 2.0f;
 		objects.push_back(new Plane(vec3(0,0,1), vec3(0,0,0), materialPlane));
-		//objects.push_back(new Cylinder(vec3(0,0,0), bigCylinderH, bigCylinderR, vec3(0,0,1), materialLamp));
-		//objects.push_back(new Sphere(vec3(0,0,bigCylinderH), sphereR, materialPlane));
-		//objects.push_back(new Cylinder(vec3(0,0,bigCylinderH), cylinderH, cylinderR, vec3(1,1,1), materialLamp));
-		
-		objects.push_back(new Cylinder(vec3(0,0,0.5), 0.5, 1, vec3(0,0,1), materialLamp));
-		//objects.push_back(new Paraboloid(vec3(0,0,2), vec3(1,0,-1), 1, .1f, materialLamp));
+		objects.push_back(new Cylinder(vec3(0,0,0), bigCylinderH, bigCylinderR, vec3(0,0,1), materialLamp));
+		objects.push_back(new Sphere(joint0, sphereR, materialPlane));
+		objects.push_back(new Sphere(joint1, sphereR, materialPlane));
+		objects.push_back(new Sphere(joint2, sphereR, materialPlane));
+		objects.push_back(new Cylinder(joint0, cylinderH0, cylinderR, cylinderDir0, materialLamp));
+		objects.push_back(new Cylinder(joint1, cylinderH1, cylinderR, cylinderDir1, materialLamp));
+		objects.push_back(new Paraboloid(joint2, paraDir, paraH, paraF, materialLamp));
 	}
 	
 	void render(std::vector<vec4>& image) {
@@ -358,7 +370,7 @@ class Scene {
 		return outRadiance;
 	}
 
-	void Animate(float dt) { /*camera.Animate(dt);*/  eye.z += 1; camera.set(eye,lookat,viewUp,fov); }
+	void Animate(float dt) {/*camera.Animate(dt);*/  eye.z += 1; camera.set(eye,lookat,viewUp,fov); }
 };
 
 GPUProgram gpuProgram; // vertex and fragment shaders
