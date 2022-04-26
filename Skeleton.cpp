@@ -285,10 +285,10 @@ class Scene {
 	std::vector<Intersectable*> objects;
 	std::vector<Light*> lights;
 	Camera camera;
-	vec3 La = vec3(0.4f, 0.4f, 0.4f);;
+	vec3 La = vec3(0.4f, 0.4f, 0.4f);
 
 	vec3 viewUp = vec3(0,0,1);
-	vec3 lookat = vec3(0,0,0);
+	vec3 lookat = vec3(1,0,0);
 	vec3 eye = vec3(7,0,5);
 	float fov = 45.0f / 180 * M_PI;
 	float epsilon = 0.0001;
@@ -303,7 +303,7 @@ class Scene {
 	vec3 dir0 = normalize(vec3(1,1,2));
 	vec3 dir1 = normalize(vec3(-0.5,-1,2.8));
 	vec3 paraDir = vec3(-2,-2,1);
-	vec3 rot0 = normalize(vec3(1,1,1));
+	vec3 rot0 = normalize(vec3(1,1,1.5));
 	vec3 rot1 = normalize(vec3(2,1,2));
 	vec3 rot2 = normalize(vec3(2,2,1));
 	vec3 joint1;
@@ -315,7 +315,7 @@ class Scene {
 		vec3 joint2 = joint1+cylinderH1*dir1;
 
 		vec3 kd1(0.3f, 0.2f, 0.1f), kd2(0.1f, 0.2f, 0.3f), ks(2,2,2);
-		Material* materialPlane = new Material(kd1, ks, 50);
+		Material* materialPlane = new Material(kd1, vec3(0.1f,0.1f,0.1f), 50);
 		Material* materialLamp = new Material(kd2, ks, 50);
 
 		objects.clear();
@@ -327,6 +327,9 @@ class Scene {
 		objects.push_back(new Cylinder(joint0, cylinderH0, cylinderR, dir0, materialLamp));
 		objects.push_back(new Cylinder(joint1, cylinderH1, cylinderR, dir1, materialLamp));
 		objects.push_back(new Paraboloid(joint2, paraDir, paraH, paraF, materialLamp));
+		
+		objects.push_back(new Sphere(vec3(2,0,0), sphereR, materialLamp));
+		camera.set(eye,lookat,viewUp,fov);
 	}
 
 	void Animate(float dt) {
@@ -344,12 +347,15 @@ class Scene {
 		t = vec4(paraDir.x,paraDir.y,paraDir.z,1) * RotationMatrix(-3*dt, dir1);
 		paraDir = vec3(t.x, t.y, t.z);
 
+		eye = eye - lookat;
+		t = vec4(eye.x,eye.y,eye.z,1) * RotationMatrix(3*dt, vec3(0,0,1));
+		eye = vec3(t.x, t.y, t.z);
+		eye = eye+lookat;
+
 		recalc();
 	}
 
 	void build() {
-		camera.set(eye,lookat,viewUp,fov);
-
 		vec3 lightDirection(1,1,1), Le(2,2,2);
 		lights.push_back(new Light(lightDirection, Le));
 
