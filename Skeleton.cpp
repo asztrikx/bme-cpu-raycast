@@ -263,13 +263,40 @@ class Paraboloid: public Intersectable {
 		float derX = implicit(position + vec3(eps,0,0));
 		float derY = implicit(position + vec3(0,eps,0));
 		float derZ = implicit(position + vec3(0,0,eps));
+		vec3 normal = normalize(vec3(derX,derY,derZ));
 
 		hit.t = t;
 		hit.material = material;
 		hit.position = position;
-		hit.normal = normalize(vec3(derX,derY,derZ));
+		hit.normal = normal;
  		return hit;
 	}
+};
+
+class LampShade: public Intersectable {
+  public:
+	Paraboloid* paraboloid;
+	Sphere* sphere;
+	LampShade(Material* _material) {
+		material = _material;
+	}
+	
+	Hit intersect(Ray const& ray) {
+		Hit paraboloidHit = paraboloid->intersect(ray);
+		Hit sphereHit = sphere->intersect(ray);
+
+		if (sphereHit.t > 0 && paraboloid->implicit(sphereHit.position) <= 0) {
+			return paraboloidHit;
+		}
+		if (sphereHit.t < 0) return paraboloidHit;
+		if (paraboloidHit.t < 0) return sphereHit;
+		return (paraboloidHit.t < sphereHit.t) ? paraboloidHit:sphereHit;
+	}
+
+	~LampShade() {
+		delete paraboloid;
+		delete sphere;
+	};
 };
 
 class Camera {
@@ -388,10 +415,15 @@ class Scene {
 		objects.push_back(new Cylinder(vec3(0,0,0), bigCylinderH, bigCylinderR, vec3(0,0,1), materialLamp));
 		objects.push_back(new Sphere(joint0, sphereR, materialLamp));
 		objects.push_back(new Sphere(joint1, sphereR, materialLamp));
-		objects.push_back(new Sphere(joint2, sphereR, materialLamp));
 		objects.push_back(new Cylinder(joint0, cylinderH0, cylinderR, dir0, materialLamp));
 		objects.push_back(new Cylinder(joint1, cylinderH1, cylinderR, dir1, materialLamp));
-		objects.push_back(new Paraboloid(joint2 , paraDir, paraH, paraF, materialLamp));
+		LampShade* lampShade = new LampShade(materialLamp);
+		lampShade->paraboloid = new Paraboloid(joint2 , paraDir, paraH, paraF, materialLamp);
+		lampShade->sphere = new Sphere(joint2, sphereR, materialLamp);
+		objects.push_back(lampShade);
+		// TODO add nappal, teszt h jó-e
+		// TODO a=0 eset quadratic
+		// TODO cylinder kiszervezése ha nincs teteje
 
 		vec3 lightDirection(1,1,1);
 		lights.push_back(new DirectLight(lightDirection, vec3(0.2f,0.2f,0.2f)));
