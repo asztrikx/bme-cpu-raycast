@@ -1,7 +1,37 @@
+//=============================================================================================
+// Mintaprogram: Zöld háromszög. Ervenyes 2019. osztol.
+//
+// A beadott program csak ebben a fajlban lehet, a fajl 1 byte-os ASCII karaktereket tartalmazhat, BOM kihuzando.
+// Tilos:
+// - mast "beincludolni", illetve mas konyvtarat hasznalni
+// - faljmuveleteket vegezni a printf-et kiveve
+// - Mashonnan atvett programresszleteket forrasmegjeloles nelkul felhasznalni es
+// - felesleges programsorokat a beadott programban hagyni!!!!!!! 
+// - felesleges kommenteket a beadott programba irni a forrasmegjelolest kommentjeit kiveve
+// ---------------------------------------------------------------------------------------------
+// A feladatot ANSI C++ nyelvu forditoprogrammal ellenorizzuk, a Visual Studio-hoz kepesti elteresekrol
+// es a leggyakoribb hibakrol (pl. ideiglenes objektumot nem lehet referencia tipusnak ertekul adni)
+// a hazibeado portal ad egy osszefoglalot.
+// ---------------------------------------------------------------------------------------------
+// A feladatmegoldasokban csak olyan OpenGL fuggvenyek hasznalhatok, amelyek az oran a feladatkiadasig elhangzottak 
+// A keretben nem szereplo GLUT fuggvenyek tiltottak.
+//
+// NYILATKOZAT
+// ---------------------------------------------------------------------------------------------
+// Nev    : Vörös Asztrik
+// Neptun : WYZJ90
+// ---------------------------------------------------------------------------------------------
+// ezennel kijelentem, hogy a feladatot magam keszitettem, es ha barmilyen segitseget igenybe vettem vagy
+// mas szellemi termeket felhasznaltam, akkor a forrast es az atvett reszt kommentekben egyertelmuen jeloltem.
+// A forrasmegjeloles kotelme vonatkozik az eloadas foliakat es a targy oktatoi, illetve a
+// grafhazi doktor tanacsait kiveve barmilyen csatornan (szoban, irasban, Interneten, stb.) erkezo minden egyeb
+// informaciora (keplet, program, algoritmus, stb.). Kijelentem, hogy a forrasmegjelolessel atvett reszeket is ertem,
+// azok helyessegere matematikai bizonyitast tudok adni. Tisztaban vagyok azzal, hogy az atvett reszek nem szamitanak
+// a sajat kontribucioba, igy a feladat elfogadasarol a tobbi resz mennyisege es minosege alapjan szuletik dontes.
+// Tudomasul veszem, hogy a forrasmegjeloles kotelmenek megsertese eseten a hazifeladatra adhato pontokat
+// negativ elojellel szamoljak el es ezzel parhuzamosan eljaras is indul velem szemben.
+//=============================================================================================
 #include "framework.h"
-#include <assert.h>
-
-#define dbg if(false)
 
 float floatEqual(float subject, float number) {
 	float eps = 0.001;
@@ -30,7 +60,6 @@ vec3 perpendicular(vec3 v) {
 	return vec3(result[0], result[1], result[2]);
 }
 
-// second is smaller
 std::pair<float,float> quardratic(float a, float b, float c) {
 	float discr = b*b-4.0f*a*c;
 	if (discr < 0) return std::make_pair(nanf(""),nanf(""));
@@ -40,20 +69,7 @@ std::pair<float,float> quardratic(float a, float b, float c) {
 	return std::make_pair(t1,t2);
 }
 
-float rayQuadratic(float a, float b, float c) {
-	std::pair<float,float> r = quardratic(a,b,c);
-	float t1 = r.first;
-	float t2 = r.second;
-	if (isnan(t1)) return t1;
-	if (t1 <= 0) return nanf("");
-	return (t2>0) ? t2 : t1;
-}
-
 float rnd() { return (float)rand() / RAND_MAX; }
-
-void print(std::string text, vec3 v) {
-	printf("%s: %ef %ef %ef\n", text.c_str(), v.x, v.y, v.z);
-}
 
 struct Material {
 	vec3 ka, kd, ks;
@@ -223,7 +239,7 @@ class Paraboloid: public Intersectable {
 	Hit intersect(Ray const& ray) {
 		Hit hit;
 
-		float a = dot(ray.dir,ray.dir); // >0
+		float a = dot(ray.dir,ray.dir);
 		float b = 2*dot(ray.dir, ray.start-f);
 		float c = dot(ray.start-f,ray.start-f);
 		a -= powf(dot(eNormal,ray.dir),2);
@@ -421,7 +437,7 @@ class Scene {
 	Hit firstIntersect(Ray ray) {
 		Hit bestHit;
 		for (Intersectable * object : objects) {
-			Hit hit = object->intersect(ray); //  hit.t < 0 if no intersection
+			Hit hit = object->intersect(ray);
 			if (hit.t > 0 && (bestHit.t < 0 || hit.t < bestHit.t))  bestHit = hit;
 		}
 		if (dot(ray.dir, bestHit.normal) > 0) bestHit.normal = bestHit.normal * (-1);
@@ -457,31 +473,29 @@ class Scene {
 
 };
 
-GPUProgram gpuProgram; // vertex and fragment shaders
+GPUProgram gpuProgram;
 Scene scene;
 
-// vertex shader in GLSL
 const char *vertexSource = R"(
 	#version 330
     precision highp float;
 
-	layout(location = 0) in vec2 cVertexPosition;	// Attrib Array 0
+	layout(location = 0) in vec2 cVertexPosition;
 	out vec2 texcoord;
 
 	void main() {
-		texcoord = (cVertexPosition + vec2(1, 1))/2;							// -1,1 to 0,1
-		gl_Position = vec4(cVertexPosition.x, cVertexPosition.y, 0, 1); 		// transform to clipping space
+		texcoord = (cVertexPosition + vec2(1, 1))/2;
+		gl_Position = vec4(cVertexPosition.x, cVertexPosition.y, 0, 1);
 	}
 )";
 
-// fragment shader in GLSL
 const char *fragmentSource = R"(
 	#version 330
     precision highp float;
 
 	uniform sampler2D textureUnit;
-	in  vec2 texcoord;			// interpolated texture coordinates
-	out vec4 fragmentColor;		// output that goes to the raster memory as told by glBindFragDataLocation
+	in  vec2 texcoord;
+	out vec4 fragmentColor;
 
 	void main() {
 		fragmentColor = texture(textureUnit, texcoord); 
@@ -530,7 +544,6 @@ public:
 
 FullScreenTexturedQuad * fullScreenTexturedQuad;
 
-// Initialization, create an OpenGL context
 void onInitialization() {
 	glViewport(0, 0, windowWidth, windowHeight);
 	scene.build();
@@ -538,33 +551,27 @@ void onInitialization() {
 	gpuProgram.create(vertexSource, fragmentSource, "fragmentColor");
 }
 
-// Window has become invalid: Redraw
 void onDisplay() {
 	std::vector<vec4> image(windowWidth*windowHeight);
 	scene.render(image);
 	fullScreenTexturedQuad->LoadTexture(image);
 	fullScreenTexturedQuad->Draw();
-	glutSwapBuffers();									// exchange the two buffers
+	glutSwapBuffers();
 }
 
-// Key of ASCII code pressed
 void onKeyboard(unsigned char key, int pX, int pY) {
 }
 
-// Key of ASCII code released
 void onKeyboardUp(unsigned char key, int pX, int pY) {
 
 }
 
-// Mouse click event
 void onMouse(int button, int state, int pX, int pY) {
 }
 
-// Move mouse with key pressed
 void onMouseMotion(int pX, int pY) {
 }
 
-// Idle event indicating that some time elapsed: do animation here
 void onIdle() {
 	scene.Animate(0.1*2);
 	glutPostRedisplay();
