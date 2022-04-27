@@ -34,7 +34,7 @@
 #include "framework.h"
 
 float floatEqual(float subject, float number) {
-	float eps = 0.001;
+	float eps = 0.00001;
 	return subject > number - eps && subject < number + eps;
 }
 
@@ -376,7 +376,7 @@ class Scene {
 	vec3 lookat = vec3(1,0,0);
 	vec3 eye = vec3(7,0,5);
 	float fov = 45.0f / 180 * M_PI;
-	float epsilon = 0.0001;
+	float epsilon = 0.005;
 
 	float bigCylinderH = 0.1;
 	float bigCylinderR = 0.5;
@@ -421,9 +421,6 @@ class Scene {
 		lampShade->paraboloid = new Paraboloid(joint2 , paraDir, paraH, paraF, materialLamp);
 		lampShade->sphere = new Sphere(joint2, sphereR, materialLamp);
 		objects.push_back(lampShade);
-		// TODO add nappal, teszt h jó-e
-		// TODO a=0 eset quadratic
-		// TODO cylinder kiszervezése ha nincs teteje
 
 		vec3 lightDirection(1,1,1);
 		lights.push_back(new DirectLight(lightDirection, vec3(0.2f,0.2f,0.2f)));
