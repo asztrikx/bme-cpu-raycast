@@ -78,6 +78,7 @@ class Intersectable {
 	Material * material;
   public:
 	virtual Hit intersect(const Ray& ray) = 0;
+	virtual ~Intersectable() {};
 };
 
 class Sphere: public Intersectable {
@@ -202,10 +203,10 @@ class Cylinder: public Intersectable {
 class Paraboloid: public Intersectable {
 	vec3 start, dir;
 	vec3 eNormal, eP;
-	vec3 f;
 	float height;
 
  public:
+	vec3 f;
 	Paraboloid(vec3 _start, vec3 _dir, float _height, float fDist, Material* _material) {
 		start = _start;
 		dir = normalize(_dir);
@@ -272,12 +273,46 @@ class Camera {
 	}
 };
 
-struct Light {
-	vec3 direction;
+class Light {
+  protected:
 	vec3 Le;
-	Light(vec3 _direction, vec3 _Le) {
-		direction = normalize(_direction);
+  public:
+	Light(vec3 _Le) {
 		Le = _Le;
+	}
+	virtual vec3 getLe(vec3 hitPos) = 0;
+	virtual vec3 getDirection(vec3 hitPos) = 0;
+	virtual ~Light() {};
+};
+
+struct PositionalLight: public Light {
+	vec3 point;
+
+	PositionalLight(vec3 _point, vec3 _Le): Light(_Le) {
+		point = _point;
+	}
+
+	vec3 getDirection(vec3 hitPos) {
+		return normalize(point - hitPos);
+	}
+	vec3 getLe(vec3 hitPos) {
+		float r = length(point - hitPos);
+		return Le/r/r;
+	}
+};
+
+struct DirectLight: public Light {
+	vec3 direction;
+
+	DirectLight(vec3 _direction, vec3 _Le): Light(_Le) {
+		direction = normalize(_direction);
+	}
+
+	vec3 getDirection(vec3 hitPos) {
+		return direction;
+	}
+	vec3 getLe(vec3 hitPos) {
+		return Le;
 	}
 };
 
@@ -285,7 +320,7 @@ class Scene {
 	std::vector<Intersectable*> objects;
 	std::vector<Light*> lights;
 	Camera camera;
-	vec3 La = vec3(0.4f, 0.4f, 0.4f);
+	vec3 La = vec3(0.1f, 0.1f, 0.1f);
 
 	vec3 viewUp = vec3(0,0,1);
 	vec3 lookat = vec3(1,0,0);
@@ -297,7 +332,7 @@ class Scene {
 	float bigCylinderR = 0.5;
 	float sphereR = 1.0f/8;
 	float cylinderR = sphereR / 3;
-	float paraH = 0.5, paraF = 0.1;
+	float paraH = 0.5, paraF = cylinderR + 0.05;
 	float cylinderH0 = 2;
 	float cylinderH1 = 1;
 	vec3 dir0 = normalize(vec3(1,1,2));
@@ -309,33 +344,41 @@ class Scene {
 	vec3 joint1;
 	vec3 joint2;
 	vec3 joint0 = vec3(0,0,bigCylinderH);
+	vec3 kd1 = vec3(55, 60, 63)/255.0f, kd2 = vec3(110, 76, 67)/255.0f;
+	Material* materialLamp = new Material(kd1, vec3(2,2,2), 50);
+	Material* materialPlane = new Material(kd2, vec3(0.1f,0.1f,0.1f), 50);
   public:
 	void recalc() {
+		for (int i = 0; i < objects.size(); i++) {
+			delete objects[i];
+		}
+		objects.clear();
+		for (int i = 0; i < lights.size(); i++) {
+			delete lights[i];
+		}
+		lights.clear();
+
 		vec3 joint1 = joint0+cylinderH0*dir0;
 		vec3 joint2 = joint1+cylinderH1*dir1;
 
-		vec3 kd1(0.3f, 0.2f, 0.1f), kd2(0.1f, 0.2f, 0.3f), ks(2,2,2);
-		Material* materialPlane = new Material(kd1, vec3(0.1f,0.1f,0.1f), 50);
-		Material* materialLamp = new Material(kd2, ks, 50);
-
-		objects.clear();
+		Paraboloid* paraboloid = new Paraboloid(joint2 , paraDir, paraH, paraF, materialLamp);
 		objects.push_back(new Plane(vec3(0,0,1), vec3(0,0,0), materialPlane));
 		objects.push_back(new Cylinder(vec3(0,0,0), bigCylinderH, bigCylinderR, vec3(0,0,1), materialLamp));
-		objects.push_back(new Sphere(joint0, sphereR, materialPlane));
-		objects.push_back(new Sphere(joint1, sphereR, materialPlane));
-		objects.push_back(new Sphere(joint2, sphereR, materialPlane));
+		objects.push_back(new Sphere(joint0, sphereR, materialLamp));
+		objects.push_back(new Sphere(joint1, sphereR, materialLamp));
+		objects.push_back(new Sphere(joint2, sphereR, materialLamp));
 		objects.push_back(new Cylinder(joint0, cylinderH0, cylinderR, dir0, materialLamp));
 		objects.push_back(new Cylinder(joint1, cylinderH1, cylinderR, dir1, materialLamp));
-		objects.push_back(new Paraboloid(joint2, paraDir, paraH, paraF, materialLamp));
-		
-		objects.push_back(new Sphere(vec3(2,0,0), sphereR, materialLamp));
+		objects.push_back(paraboloid);
+
+		vec3 lightDirection(1,1,1);
+		lights.push_back(new DirectLight(lightDirection, vec3(0.2f,0.2f,0.2f)));
+		lights.push_back(new PositionalLight(paraboloid->f, vec3(2,2,2)));
+
 		camera.set(eye,lookat,viewUp,fov);
 	}
 
 	void Animate(float dt) {
-		/*camera.Animate(dt);*/
-		//eye.z += 1; camera.set(eye,lookat,viewUp,fov);
-
 		vec4 t;
 
 		t = vec4(dir0.x,dir0.y,dir0.z,1) * RotationMatrix(3*dt, rot0);
@@ -356,9 +399,6 @@ class Scene {
 	}
 
 	void build() {
-		vec3 lightDirection(1,1,1), Le(2,2,2);
-		lights.push_back(new Light(lightDirection, Le));
-
 		recalc();
 	}
 	
@@ -392,13 +432,15 @@ class Scene {
 		if (hit.t < 0) return La;
 		vec3 outRadiance = hit.material->ka * La;
 		for (Light * light : lights) {
-			Ray shadowRay(hit.position + hit.normal * epsilon, light->direction);
-			float cosTheta = dot(hit.normal, light->direction);
+			vec3 direction = light->getDirection(hit.position);
+			vec3 Le = light->getLe(hit.position);
+			Ray shadowRay(hit.position + hit.normal * epsilon, direction);
+			float cosTheta = dot(hit.normal, direction);
 			if (cosTheta > 0 && !shadowIntersect(shadowRay)) {	// shadow computation
-				outRadiance = outRadiance + light->Le * hit.material->kd * cosTheta;
-				vec3 halfway = normalize(-ray.dir + light->direction);
+				outRadiance = outRadiance + Le * hit.material->kd * cosTheta;
+				vec3 halfway = normalize(-ray.dir + direction);
 				float cosDelta = dot(hit.normal, halfway);
-				if (cosDelta > 0) outRadiance = outRadiance + light->Le * hit.material->ks * powf(cosDelta, hit.material->shininess);
+				if (cosDelta > 0) outRadiance = outRadiance + Le * hit.material->ks * powf(cosDelta, hit.material->shininess);
 			}
 		}
 		return outRadiance;
