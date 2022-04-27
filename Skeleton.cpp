@@ -282,6 +282,7 @@ class Light {
 	}
 	virtual vec3 getLe(vec3 hitPos) = 0;
 	virtual vec3 getDirection(vec3 hitPos) = 0;
+	virtual vec3 getPosition() = 0;
 	virtual ~Light() {};
 };
 
@@ -299,6 +300,9 @@ struct PositionalLight: public Light {
 		float r = length(point - hitPos);
 		return Le/r/r;
 	}
+	vec3 getPosition() {
+		return point;
+	}
 };
 
 struct DirectLight: public Light {
@@ -313,6 +317,9 @@ struct DirectLight: public Light {
 	}
 	vec3 getLe(vec3 hitPos) {
 		return Le;
+	}
+	vec3 getPosition() {
+		return vec3(nanf(""),nanf(""),nanf(""));
 	}
 };
 
@@ -332,7 +339,7 @@ class Scene {
 	float bigCylinderR = 0.5;
 	float sphereR = 1.0f/8;
 	float cylinderR = sphereR / 3;
-	float paraH = 0.5, paraF = cylinderR + 0.05;
+	float paraH = 0.5, paraF = cylinderR + 0.1;
 	float cylinderH0 = 2;
 	float cylinderH1 = 1;
 	vec3 dir0 = normalize(vec3(1,1,2));
@@ -361,7 +368,6 @@ class Scene {
 		vec3 joint1 = joint0+cylinderH0*dir0;
 		vec3 joint2 = joint1+cylinderH1*dir1;
 
-		Paraboloid* paraboloid = new Paraboloid(joint2 , paraDir, paraH, paraF, materialLamp);
 		objects.push_back(new Plane(vec3(0,0,1), vec3(0,0,0), materialPlane));
 		objects.push_back(new Cylinder(vec3(0,0,0), bigCylinderH, bigCylinderR, vec3(0,0,1), materialLamp));
 		objects.push_back(new Sphere(joint0, sphereR, materialLamp));
@@ -369,11 +375,11 @@ class Scene {
 		objects.push_back(new Sphere(joint2, sphereR, materialLamp));
 		objects.push_back(new Cylinder(joint0, cylinderH0, cylinderR, dir0, materialLamp));
 		objects.push_back(new Cylinder(joint1, cylinderH1, cylinderR, dir1, materialLamp));
-		objects.push_back(paraboloid);
+		objects.push_back(new Paraboloid(joint2 , paraDir, paraH, paraF, materialLamp));
 
 		vec3 lightDirection(1,1,1);
 		lights.push_back(new DirectLight(lightDirection, vec3(0.2f,0.2f,0.2f)));
-		lights.push_back(new PositionalLight(paraboloid->f, vec3(2,2,2)));
+		lights.push_back(new PositionalLight(joint2 + paraF*paraDir, vec3(20,20,20)));
 
 		camera.set(eye,lookat,viewUp,fov);
 	}
@@ -422,8 +428,11 @@ class Scene {
 		return bestHit;
 	}
 
-	bool shadowIntersect(Ray ray) {	// for directional lights
-		for (Intersectable * object : objects) if (object->intersect(ray).t > 0) return true;
+	bool shadowIntersect(Ray ray, vec3 lightPosition) {
+		for (Intersectable * object : objects) {
+			Hit hit = object->intersect(ray);
+			if (hit.t > 0 && (isnan(lightPosition.x) || length(ray.start-lightPosition) > length(ray.start-hit.position))) return true;
+		}
 		return false;
 	}
 
@@ -436,7 +445,7 @@ class Scene {
 			vec3 Le = light->getLe(hit.position);
 			Ray shadowRay(hit.position + hit.normal * epsilon, direction);
 			float cosTheta = dot(hit.normal, direction);
-			if (cosTheta > 0 && !shadowIntersect(shadowRay)) {	// shadow computation
+			if (cosTheta > 0 && !shadowIntersect(shadowRay, light->getPosition())) {
 				outRadiance = outRadiance + Le * hit.material->kd * cosTheta;
 				vec3 halfway = normalize(-ray.dir + direction);
 				float cosDelta = dot(hit.normal, halfway);
