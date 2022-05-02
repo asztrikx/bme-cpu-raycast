@@ -316,8 +316,8 @@ class Camera {
 class Light {
   protected:
 	vec3 Le;
-	vec3 point;
   public:
+	vec3 point;
 	Light(vec3 _point, vec3 _Le) {
 		point = _point;
 		Le = _Le;
@@ -329,9 +329,6 @@ class Light {
 	vec3 getDirection(vec3 hitPos) {
 		return normalize(point - hitPos);
 	};
-	vec3 getPosition() {
-		return point;
-	}
 };
 
 class Scene {
@@ -445,7 +442,7 @@ class Scene {
 	bool shadowIntersect(Ray ray, vec3 lightPosition) {
 		for (Intersectable * object : objects) {
 			Hit hit = object->intersect(ray);
-			if (hit.t > 0 && (isnan(lightPosition.x) || length(ray.start-lightPosition) > length(ray.start-hit.position))) return true;
+			if (hit.t > 0 && length(ray.start-lightPosition) > length(ray.start-hit.position)) return true;
 		}
 		return false;
 	}
@@ -459,7 +456,7 @@ class Scene {
 			vec3 Le = light->getLe(hit.position);
 			Ray shadowRay(hit.position + hit.normal * epsilon, direction);
 			float cosTheta = dot(hit.normal, direction);
-			if (cosTheta > 0 && !shadowIntersect(shadowRay, light->getPosition())) {
+			if (cosTheta > 0 && !shadowIntersect(shadowRay, light->point)) {
 				outRadiance = outRadiance + Le * hit.material->kd * cosTheta;
 				vec3 halfway = normalize(-ray.dir + direction);
 				float cosDelta = dot(hit.normal, halfway);
