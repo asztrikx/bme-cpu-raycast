@@ -319,50 +319,21 @@ class Camera {
 class Light {
   protected:
 	vec3 Le;
-  public:
-	Light(vec3 _Le) {
-		Le = _Le;
-	}
-	virtual vec3 getLe(vec3 hitPos) = 0;
-	virtual vec3 getDirection(vec3 hitPos) = 0;
-	virtual vec3 getPosition() = 0;
-	virtual ~Light() {};
-};
-
-struct PositionalLight: public Light {
 	vec3 point;
-
-	PositionalLight(vec3 _point, vec3 _Le): Light(_Le) {
+  public:
+	Light(vec3 _point, vec3 _Le) {
 		point = _point;
-	}
-
-	vec3 getDirection(vec3 hitPos) {
-		return normalize(point - hitPos);
+		Le = _Le;
 	}
 	vec3 getLe(vec3 hitPos) {
 		float r = length(point - hitPos);
 		return Le/r/r;
-	}
+	};
+	vec3 getDirection(vec3 hitPos) {
+		return normalize(point - hitPos);
+	};
 	vec3 getPosition() {
 		return point;
-	}
-};
-
-struct DirectLight: public Light {
-	vec3 direction;
-
-	DirectLight(vec3 _direction, vec3 _Le): Light(_Le) {
-		direction = normalize(_direction);
-	}
-
-	vec3 getDirection(vec3 hitPos) {
-		return direction;
-	}
-	vec3 getLe(vec3 hitPos) {
-		return Le;
-	}
-	vec3 getPosition() {
-		return vec3(nanf(""),nanf(""),nanf(""));
 	}
 };
 
@@ -397,6 +368,7 @@ class Scene {
 	vec3 kd1 = vec3(55, 60, 63)/255.0f, kd2 = vec3(110, 76, 67)/255.0f;
 	Material* materialLamp = new Material(kd1, vec3(2,2,2), 50);
 	Material* materialPlane = new Material(kd2, vec3(0.1f,0.1f,0.1f), 50);
+	vec3 sun = vec3(5,5,5);
   public:
 	void recalc() {
 		for (int i = 0; i < objects.size(); i++) {
@@ -423,8 +395,8 @@ class Scene {
 		objects.push_back(lampShade);
 
 		vec3 lightDirection(1,1,1);
-		lights.push_back(new DirectLight(lightDirection, vec3(0.2f,0.2f,0.2f)));
-		lights.push_back(new PositionalLight(joint2 + paraF*paraDir, vec3(20,20,20)));
+		lights.push_back(new Light(joint2 + paraF*paraDir, vec3(20,20,20)));
+		lights.push_back(new Light(sun, vec3(2,2,2)));
 
 		camera.set(eye,lookat,viewUp,fov);
 	}
