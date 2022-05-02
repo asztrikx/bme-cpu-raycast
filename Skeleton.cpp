@@ -259,16 +259,13 @@ class Paraboloid: public Intersectable {
 			if (t < 0 || distFromStart > height ) return hit;
 		}
 
-		float eps = 0.001;
-		float derX = implicit(position + vec3(eps,0,0));
-		float derY = implicit(position + vec3(0,eps,0));
-		float derZ = implicit(position + vec3(0,0,eps));
-		vec3 normal = normalize(vec3(derX,derY,derZ));
+		vec3 gradf = 2*(position-f+eNormal*dot(eNormal,eP-position));
+		gradf = normalize(gradf);
 
 		hit.t = t;
 		hit.material = material;
 		hit.position = position;
-		hit.normal = normal;
+		hit.normal = gradf;
  		return hit;
 	}
 };
