@@ -38,28 +38,6 @@ float floatEqual(float subject, float number) {
 	return subject > number - eps && subject < number + eps;
 }
 
-vec3 perpendicular(vec3 v) {
-	float coos[] = {v.x, v.y, v.z};
-	float result[3];
-
-	int zeroCount = 0;
-	float sum = 0.0f;
-	int lastNonZeroIndex = 0;
-	for (int i = 0; i < 3; i++) {
-		if (coos[i] == 0) {
-			zeroCount++;
-		} else {
-			sum += coos[i];
-			lastNonZeroIndex = i;
-		}
-		result[i] = 1;
-	}
-
-	sum -= coos[lastNonZeroIndex];
-	result[lastNonZeroIndex] = -sum / coos[lastNonZeroIndex];
-	return vec3(result[0], result[1], result[2]);
-}
-
 std::pair<float,float> quardratic(float a, float b, float c) {
 	float discr = b*b-4.0f*a*c;
 	if (discr < 0) return std::make_pair(nanf(""),nanf(""));
@@ -157,7 +135,6 @@ class Cylinder: public Intersectable {
 	float height;
 	vec3 dir;
 	float r;
-	vec3 dir90;
 
 	std::vector<Plane> planes;
 
@@ -169,7 +146,6 @@ class Cylinder: public Intersectable {
 		dir = normalize(_dir);
 		material = _material;
 
-		dir90 = perpendicular(dir);
 		planes.push_back(Plane(dir, start + dir * height, material));
 		planes.push_back(Plane(dir, start, material));
 	}
