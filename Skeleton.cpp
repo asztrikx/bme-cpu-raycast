@@ -47,8 +47,6 @@ std::pair<float,float> quardratic(float a, float b, float c) {
 	return std::make_pair(t1,t2);
 }
 
-float rnd() { return (float)rand() / RAND_MAX; }
-
 struct Material {
 	vec3 ka, kd, ks;
 	float  shininess;
@@ -316,7 +314,7 @@ class Scene {
 	vec3 viewUp = vec3(0,0,1);
 	vec3 lookat = vec3(1,0,0);
 	vec3 eye = vec3(7,0,5);
-	float fov = 45.0f / 180 * M_PI;
+	float fov = 53.0f / 180 * M_PI;
 	float epsilon = 0.005;
 
 	float bigCylinderH = 0.1;
@@ -331,7 +329,6 @@ class Scene {
 	vec3 paraDir = vec3(-2,-2,1);
 	vec3 rot0 = normalize(vec3(1,1,1.5));
 	vec3 rot1 = normalize(vec3(2,1,2));
-	vec3 rot2 = normalize(vec3(2,2,1));
 	vec3 joint1;
 	vec3 joint2;
 	vec3 joint0 = vec3(0,0,bigCylinderH);
@@ -364,9 +361,8 @@ class Scene {
 		lampShade->sphere = new Sphere(joint2, sphereR, materialLamp);
 		objects.push_back(lampShade);
 
-		vec3 lightDirection(1,1,1);
 		lights.push_back(new Light(joint2 + paraF*paraDir, vec3(20,20,20)));
-		lights.push_back(new Light(sun, vec3(2,2,2)));
+		lights.push_back(new Light(sun, vec3(10,10,10)));
 
 		camera.set(eye,lookat,viewUp,fov);
 	}
