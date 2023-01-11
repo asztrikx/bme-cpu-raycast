@@ -13,8 +13,8 @@ g++ \
 -Wall \
 -Wextra \
 -pedantic \
+-Werror=return-type \
 -fsanitize=undefined \
--fsanitize-undefined-trap-on-error \
 -fsanitize=address \
 -lm \
 -D MEMTRACE \
@@ -29,4 +29,4 @@ framework.cpp \
 $(find . -name '*.cpp' | sed 's:./framework.cpp::' | sed '$regex' | tr '\n' ' ') \
 \
 -o \
-main \
+main_o_none \
